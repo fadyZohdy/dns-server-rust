@@ -1,6 +1,6 @@
 use bytes::Buf;
 use std::net::UdpSocket;
-use types::{Answer, Header, Label, Message};
+use types::{Answer, Header, Message};
 
 mod parser;
 mod types;
@@ -9,17 +9,20 @@ fn handle_connection(buf: [u8; 512]) -> anyhow::Result<Message> {
     let message = parser::parse_bytes_message(&mut buf.reader())?;
     let questions = message.questions;
 
-    let answer = Answer {
-        name: vec![Label("codecrafters".to_string()), Label("io".to_string())],
-        record_type: types::RecordType::A,
-        record_class: types::RecordClass::IN,
-        ttl: 60,
-        rdata: vec![8, 8, 8, 8],
-    };
+    let answers: Vec<_> = questions
+        .iter()
+        .map(|q| Answer {
+            name: q.name.clone(),
+            record_type: q.record_type,
+            record_class: q.record_class,
+            ttl: 60,
+            rdata: vec![8, 8, 8, 8],
+        })
+        .collect();
 
     let mut response_header = Header::new_reply(message.header.id);
     response_header.qdcount = questions.len() as u16;
-    response_header.ancount = 1;
+    response_header.ancount = answers.len() as u16;
     response_header.set_opcode(message.header.get_opcode());
     response_header.set_rd(message.header.get_rd());
     response_header.set_rcode(message.header.get_opcode());
@@ -27,7 +30,7 @@ fn handle_connection(buf: [u8; 512]) -> anyhow::Result<Message> {
     Ok(Message {
         header: response_header,
         questions,
-        answers: vec![answer],
+        answers,
         ..Default::default()
     })
 }

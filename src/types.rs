@@ -39,7 +39,6 @@ impl Header {
 
     pub fn get_opcode(&self) -> u8 {
         let opcode = (self.flags[0] & 0b0111_1000) >> 3;
-        println!("get_opcode: {}", opcode);
         opcode
     }
 
@@ -104,7 +103,7 @@ impl TryInto<[u8; 12]> for Header {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub enum RecordType {
     #[default]
     A,
@@ -138,7 +137,7 @@ impl Into<u16> for RecordType {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Label(pub String);
 
 impl Into<Vec<u8>> for Label {
@@ -150,7 +149,7 @@ impl Into<Vec<u8>> for Label {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Copy, Clone, Debug, Default)]
 pub enum RecordClass {
     #[default]
     IN,
@@ -170,7 +169,7 @@ impl Into<u16> for RecordClass {
        Type: 2-byte int; the type of record (1 for an A record, 5 for a CNAME record etc.)
        Class: 2-byte int; usually set to 1
 */
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Question {
     pub name: Vec<Label>,
     pub record_type: RecordType,
