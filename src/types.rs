@@ -1,24 +1,5 @@
 use bytes::{BufMut, BytesMut};
 
-// All communications in the DNS protocol are carried in a single format called a "message".
-// Each message consists of 5 sections: header, question, answer, authority, and an additional space.
-
-/**
-    Packet Identifier (ID) 	            16 bits 	A random ID assigned to query packets. Response packets must reply with the same ID. Expected value: 1234.
-    Query/Response Indicator (QR)       1 bit 	1 for a reply packet, 0 for a question packet. Expected value: 1.
-    Operation Code (OPCODE)             4 bits 	Specifies the kind of query in a message. Expected value: 0.
-    Authoritative Answer (AA)           1 bit 	1 if the responding server "owns" the domain queried, i.e., it's authoritative. Expected value: 0.
-    Truncation (TC)                     1 bit 	1 if the message is larger than 512 bytes. Always 0 in UDP responses. Expected value: 0.
-    Recursion Desired (RD) 	            1 bit 	Sender sets this to 1 if the server should recursively resolve this query, 0 otherwise. Expected value: 0.
-    Recursion Available (RA)            1 bit 	Server sets this to 1 to indicate that recursion is available. Expected value: 0.
-    Reserved (Z)                        3 bits 	Used by DNSSEC queries. At inception, it was reserved for future use. Expected value: 0.
-    Response Code (RCODE)               4 bits 	Response code indicating the status of the response. Expected value: 0 (no error).
-    Question Count (QDCOUNT)            16 bits 	Number of questions in the Question section. Expected value: 0.
-    Answer Record Count (ANCOUNT)       16 bits 	Number of records in the Answer section. Expected value: 0.
-    Authority Record Count (NSCOUNT) 	16 bits 	Number of records in the Authority section. Expected value: 0.
-    Additional Record Count (ARCOUNT) 	16 bits 	Number of records in the Additional section. Expected value: 0.
-*/
-
 #[derive(Debug, Default)]
 pub struct Header {
     pub id: u16,
@@ -31,15 +12,16 @@ pub struct Header {
 
 impl Header {
     pub fn new_reply(id: u16) -> Self {
-        let mut h = Header::default();
-        h.id = id;
+        let mut h = Header {
+            id,
+            ..Default::default()
+        };
         h.flags[0] |= 0b1000_0000;
         h
     }
 
     pub fn get_opcode(&self) -> u8 {
-        let opcode = (self.flags[0] & 0b0111_1000) >> 3;
-        opcode
+        (self.flags[0] & 0b0111_1000) >> 3
     }
 
     pub fn set_opcode(&mut self, opcode: u8) {
@@ -108,7 +90,7 @@ pub enum RecordType {
     #[default]
     A,
     NS,
-    CNAME,
+    Cname,
     MX,
 }
 
@@ -119,19 +101,19 @@ impl TryFrom<u16> for RecordType {
         match value {
             1 => Ok(RecordType::A),
             2 => Ok(RecordType::NS),
-            5 => Ok(RecordType::CNAME),
+            5 => Ok(RecordType::Cname),
             15 => Ok(RecordType::MX),
             _ => Err(anyhow::anyhow!("Unknown record type: {}", value)),
         }
     }
 }
 
-impl Into<u16> for RecordType {
-    fn into(self) -> u16 {
-        match self {
+impl From<RecordType> for u16 {
+    fn from(val: RecordType) -> Self {
+        match val {
             RecordType::A => 1,
             RecordType::NS => 2,
-            RecordType::CNAME => 5,
+            RecordType::Cname => 5,
             RecordType::MX => 15,
         }
     }
@@ -140,11 +122,11 @@ impl Into<u16> for RecordType {
 #[derive(Clone, Debug, Default)]
 pub struct Label(pub String);
 
-impl Into<Vec<u8>> for Label {
-    fn into(self) -> Vec<u8> {
+impl From<Label> for Vec<u8> {
+    fn from(val: Label) -> Self {
         let mut buf = BytesMut::new();
-        buf.put_u8(self.0.len() as u8);
-        buf.put(self.0.as_bytes());
+        buf.put_u8(val.0.len() as u8);
+        buf.put(val.0.as_bytes());
         buf.into()
     }
 }
@@ -155,9 +137,9 @@ pub enum RecordClass {
     IN,
 }
 
-impl Into<u16> for RecordClass {
-    fn into(self) -> u16 {
-        match self {
+impl From<RecordClass> for u16 {
+    fn from(val: RecordClass) -> Self {
+        match val {
             RecordClass::IN => 1,
         }
     }
@@ -176,19 +158,19 @@ pub struct Question {
     pub record_class: RecordClass,
 }
 
-impl Into<Vec<u8>> for Question {
-    fn into(self) -> Vec<u8> {
+impl From<Question> for Vec<u8> {
+    fn from(val: Question) -> Self {
         let mut buf = BytesMut::new();
 
-        self.name.into_iter().for_each(|l| {
+        val.name.into_iter().for_each(|l| {
             let label_bytes: Vec<u8> = l.into();
             buf.extend_from_slice(label_bytes.as_slice());
         });
         buf.put_u8(0);
 
-        buf.put_u16(self.record_type.into());
+        buf.put_u16(val.record_type.into());
 
-        buf.put_u16(self.record_class.into());
+        buf.put_u16(val.record_class.into());
 
         buf.into()
     }
@@ -203,25 +185,25 @@ pub struct Answer {
     pub rdata: Vec<u8>,
 }
 
-impl Into<Vec<u8>> for Answer {
-    fn into(self) -> Vec<u8> {
+impl From<Answer> for Vec<u8> {
+    fn from(val: Answer) -> Self {
         let mut buf = BytesMut::with_capacity(512);
-        self.name.into_iter().for_each(|l| {
+        val.name.into_iter().for_each(|l| {
             let label_bytes: Vec<u8> = l.into();
             buf.extend_from_slice(label_bytes.as_slice());
         });
         buf.put_u8(0);
 
-        buf.put_u16(self.record_type.into());
+        buf.put_u16(val.record_type.into());
 
-        buf.put_u16(self.record_class.into());
+        buf.put_u16(val.record_class.into());
 
-        buf.put_u32(self.ttl);
+        buf.put_u32(val.ttl);
 
         // rdlength
-        buf.put_u16(self.rdata.len() as u16);
+        buf.put_u16(val.rdata.len() as u16);
 
-        buf.extend_from_slice(&self.rdata[..]);
+        buf.extend_from_slice(&val.rdata[..]);
 
         buf.into()
     }

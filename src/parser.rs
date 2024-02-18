@@ -1,61 +1,95 @@
-use std::io::Read;
-
-use bytes::buf::Reader;
-
 use crate::types::{Header, Label, Message, Question, RecordType};
 
-fn read_byte(buff: &mut Reader<&[u8]>) -> anyhow::Result<u8> {
-    let mut buf: [u8; 1] = [0; 1];
-
-    buff.read_exact(&mut buf)?;
-    Ok(buf[0])
+pub struct DnsParser {
+    pub packet: Vec<u8>,
+    pub pos: usize,
 }
 
-fn parse_header(buff: &mut Reader<&[u8]>) -> anyhow::Result<Header> {
-    let mut header_buff: [u8; 12] = [0; 12];
-    buff.read_exact(&mut header_buff)?;
-    Header::try_from(header_buff)
-}
-
-fn parse_labels(buff: &mut Reader<&[u8]>) -> anyhow::Result<Vec<Label>> {
-    let mut labels: Vec<Label> = vec![];
-    while let Ok(b) = read_byte(buff) {
-        if b == 0 {
-            break;
-        }
-        let mut buf = vec![0; b as usize];
-        buff.read_exact(&mut buf)?;
-        let s = String::from_utf8(buf.to_vec())?;
-        labels.push(Label(s));
+impl DnsParser {
+    fn parse_header(&mut self) -> anyhow::Result<Header> {
+        let header_bytes: [u8; 12] = self.packet[0..12].try_into()?;
+        self.pos = 12;
+        Header::try_from(header_bytes)
     }
-    Ok(labels)
+
+    fn parse_labels(&mut self) -> anyhow::Result<Vec<Label>> {
+        let mut labels: Vec<Label> = vec![];
+        while let Some(b) = self.packet.get(self.pos) {
+            self.pos += 1;
+            if *b == 0 {
+                break;
+            } else if (*b & 0b1100_0000) == 0b1100_0000 {
+                // if the two Most Significant Bits of the length is set, we can instead expect the length byte to be followed by a second byte.
+                // These two bytes taken together, and removing the two MSB's, indicate the jump position
+                // get the jump position
+                let jump_pos = u16::from_be_bytes([*b & 0b0011_1111, self.packet[self.pos]]);
+                self.pos += 1;
+                let current_pos = self.pos;
+                self.pos = jump_pos as usize;
+                labels.extend(self.parse_labels()?);
+                self.pos = current_pos;
+                return Ok(labels);
+            } else {
+                let length = *b as usize;
+                // skip the length byte
+                let s = String::from_utf8(self.packet[self.pos..self.pos + length].to_vec())?;
+                labels.push(Label(s));
+                self.pos += length;
+            }
+        }
+        Ok(labels)
+    }
+
+    fn parse_question(&mut self) -> anyhow::Result<Question> {
+        let labels = self.parse_labels()?;
+
+        let record_type = RecordType::try_from(u16::from_be_bytes(
+            self.packet[self.pos..=self.pos + 1].try_into()?,
+        ))?;
+        // skip record type bytes
+        self.pos += 2;
+
+        // skip record class bytes
+        self.pos += 2;
+
+        let q = Question {
+            name: labels,
+            record_type,
+            ..Default::default()
+        };
+        Ok(q)
+    }
+
+    pub fn parse(&mut self) -> anyhow::Result<Message> {
+        let header = self.parse_header()?;
+
+        let questions: Result<Vec<Question>, _> =
+            (0..header.qdcount).map(|_| self.parse_question()).collect();
+        let questions = questions?;
+
+        Ok(Message {
+            header,
+            questions,
+            ..Default::default()
+        })
+    }
 }
 
-fn parse_question(buff: &mut Reader<&[u8]>) -> anyhow::Result<Question> {
-    let labels = parse_labels(buff)?;
+#[test]
+fn test_parser_decompress() {
+    let MESSAGE_BYTES: &[u8] = &[
+        144, 155, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, // header bytes
+        3, 97, 98, 99, 17, 108, 111, 110, 103, 97, 115, 115, 100, 111, 109, 97, 105, 110, 110, 97,
+        109, 101, 3, 99, 111, 109, 0, 0, 1, 0, 1, // question abc longassdomainname com
+        3, 100, 101, 102, 192, 16, 0, 1, 0, 1, // question def jump
+    ];
 
-    let mut buf: [u8; 2] = [0; 2];
-    buff.read_exact(&mut buf)?;
-    let record_type = RecordType::try_from(u16::from_be_bytes(buf.try_into().unwrap()))?;
-
-    let q = Question {
-        name: labels,
-        record_type,
-        ..Default::default()
+    let mut parser = DnsParser {
+        packet: MESSAGE_BYTES.to_vec(),
+        pos: 0,
     };
-    Ok(q)
-}
 
-pub fn parse_bytes_message(buff: &mut Reader<&[u8]>) -> anyhow::Result<Message> {
-    let header = parse_header(buff)?;
+    let message = parser.parse().unwrap();
 
-    let questions: Result<Vec<Question>, _> =
-        (0..header.qdcount).map(|_| parse_question(buff)).collect();
-    let questions = questions?;
-
-    Ok(Message {
-        header,
-        questions,
-        ..Default::default()
-    })
+    assert!(true);
 }

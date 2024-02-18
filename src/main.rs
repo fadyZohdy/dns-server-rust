@@ -1,4 +1,3 @@
-use bytes::Buf;
 use std::net::UdpSocket;
 use types::{Answer, Header, Message};
 
@@ -6,7 +5,12 @@ mod parser;
 mod types;
 
 fn handle_connection(buf: [u8; 512]) -> anyhow::Result<Message> {
-    let message = parser::parse_bytes_message(&mut buf.reader())?;
+    //let message = parser::parse_bytes_message(&mut buf.reader())?;
+    let mut dns_parser = parser::DnsParser {
+        packet: buf.to_vec(),
+        pos: 0,
+    };
+    let message = dns_parser.parse()?;
     let questions = message.questions;
 
     let answers: Vec<_> = questions
