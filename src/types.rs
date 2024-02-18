@@ -138,7 +138,7 @@ impl Into<u16> for RecordClass {
 */
 #[derive(Debug, Default)]
 pub struct Question {
-    pub labels: Vec<Label>,
+    pub name: Vec<Label>,
     pub record_type: RecordType,
     pub record_class: RecordClass,
 }
@@ -147,7 +147,7 @@ impl Into<Vec<u8>> for Question {
     fn into(self) -> Vec<u8> {
         let mut buf = BytesMut::new();
 
-        self.labels.into_iter().for_each(|l| {
+        self.name.into_iter().for_each(|l| {
             let label_bytes: Vec<u8> = l.into();
             buf.extend_from_slice(label_bytes.as_slice());
         });
@@ -162,7 +162,37 @@ impl Into<Vec<u8>> for Question {
 }
 
 #[derive(Default)]
-pub struct Answer {}
+pub struct Answer {
+    pub name: Vec<Label>,
+    pub record_type: RecordType,
+    pub record_class: RecordClass,
+    pub ttl: u32,
+    pub rdata: Vec<u8>,
+}
+
+impl Into<Vec<u8>> for Answer {
+    fn into(self) -> Vec<u8> {
+        let mut buf = BytesMut::with_capacity(512);
+        self.name.into_iter().for_each(|l| {
+            let label_bytes: Vec<u8> = l.into();
+            buf.extend_from_slice(label_bytes.as_slice());
+        });
+        buf.put_u8(0);
+
+        buf.put_u16(self.record_type.into());
+
+        buf.put_u16(self.record_class.into());
+
+        buf.put_u32(self.ttl);
+
+        // rdlength
+        buf.put_u16(self.rdata.len() as u16);
+
+        buf.extend_from_slice(&self.rdata[..]);
+
+        buf.into()
+    }
+}
 
 #[derive(Default)]
 pub struct Authority {}
@@ -174,7 +204,7 @@ pub struct Additional {}
 pub struct Message {
     pub header: Header,
     pub questions: Vec<Question>,
-    pub answer: Answer,
+    pub answers: Vec<Answer>,
     pub authority: Authority,
     pub additional: Additional,
 }
@@ -186,9 +216,15 @@ impl TryInto<Vec<u8>> for Message {
         let mut r = BytesMut::with_capacity(512);
         let header_bytes: [u8; 12] = self.header.try_into()?;
         r.extend_from_slice(&header_bytes);
+
         self.questions.into_iter().for_each(|q| {
             let q_bytes: Vec<u8> = q.into();
             r.extend_from_slice(q_bytes.as_slice());
+        });
+
+        self.answers.into_iter().for_each(|a| {
+            let a_bytes: Vec<u8> = a.into();
+            r.extend_from_slice(a_bytes.as_slice());
         });
         Ok(r.into())
     }

@@ -39,7 +39,7 @@ fn parse_question(buff: &mut Reader<&[u8]>) -> anyhow::Result<Question> {
     let record_type = RecordType::try_from(u16::from_be_bytes(buf.try_into().unwrap()))?;
 
     let q = Question {
-        labels,
+        name: labels,
         record_type,
         ..Default::default()
     };
@@ -48,7 +48,6 @@ fn parse_question(buff: &mut Reader<&[u8]>) -> anyhow::Result<Question> {
 
 pub fn parse_bytes_message(buff: &mut Reader<&[u8]>) -> anyhow::Result<Message> {
     let header = parse_header(buff)?;
-    println!("{:?}", header);
 
     let questions: Result<Vec<Question>, _> =
         (0..header.qdcount).map(|_| parse_question(buff)).collect();
