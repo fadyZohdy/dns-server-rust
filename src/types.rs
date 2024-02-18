@@ -36,6 +36,40 @@ impl Header {
         h.flags[0] |= 0b1000_0000;
         h
     }
+
+    pub fn get_opcode(&self) -> u8 {
+        let opcode = (self.flags[0] & 0b0111_1000) >> 3;
+        println!("get_opcode: {}", opcode);
+        opcode
+    }
+
+    pub fn set_opcode(&mut self, opcode: u8) {
+        let mask = (opcode << 3) & 0b0111_1000;
+        self.flags[0] |= mask;
+    }
+
+    pub fn get_rd(&self) -> bool {
+        let mask = 0b0000_0001;
+        self.flags[0] & mask > 0
+    }
+
+    pub fn set_rd(&mut self, rd: bool) {
+        if rd {
+            let mask = 0b0000_0001;
+            self.flags[0] |= mask;
+        } else {
+            let mask = 0b0000_0000;
+            self.flags[0] |= mask;
+        }
+    }
+
+    // 0 (no error) if OPCODE is 0 (standard query) else 4 (not implemented)
+    pub fn set_rcode(&mut self, opcode: u8) {
+        if opcode != 0 {
+            self.flags[1] &= 0b1111_0000;
+            self.flags[1] |= 0b1111_0100;
+        }
+    }
 }
 
 impl TryFrom<[u8; 12]> for Header {

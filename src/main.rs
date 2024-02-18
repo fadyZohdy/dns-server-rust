@@ -16,9 +16,14 @@ fn handle_connection(buf: [u8; 512]) -> anyhow::Result<Message> {
         ttl: 60,
         rdata: vec![8, 8, 8, 8],
     };
+
     let mut response_header = Header::new_reply(message.header.id);
     response_header.qdcount = questions.len() as u16;
     response_header.ancount = 1;
+    response_header.set_opcode(message.header.get_opcode());
+    response_header.set_rd(message.header.get_rd());
+    response_header.set_rcode(message.header.get_opcode());
+
     Ok(Message {
         header: response_header,
         questions,
