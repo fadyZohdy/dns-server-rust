@@ -176,7 +176,7 @@ impl From<Question> for Vec<u8> {
     }
 }
 
-#[derive(Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Answer {
     pub name: Vec<Label>,
     pub record_type: RecordType,
@@ -209,13 +209,13 @@ impl From<Answer> for Vec<u8> {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Authority {}
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Additional {}
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Message {
     pub header: Header,
     pub questions: Vec<Question>,

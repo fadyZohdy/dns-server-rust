@@ -1,4 +1,4 @@
-use crate::types::{Header, Label, Message, Question, RecordType};
+use crate::types::{Answer, Header, Label, Message, Question, RecordType};
 
 pub struct DnsParser {
     pub packet: Vec<u8>,
@@ -60,6 +60,37 @@ impl DnsParser {
         Ok(q)
     }
 
+    fn parse_answer(&mut self) -> anyhow::Result<Answer> {
+        let labels = self.parse_labels()?;
+
+        let record_type = RecordType::try_from(u16::from_be_bytes(
+            self.packet[self.pos..=self.pos + 1].try_into()?,
+        ))?;
+        // skip record type bytes
+        self.pos += 2;
+
+        // skip record class bytes
+        self.pos += 2;
+
+        let ttl = u32::from_be_bytes(self.packet[self.pos..self.pos + 4].try_into()?);
+        self.pos += 4;
+
+        let rdlength = u16::from_be_bytes(self.packet[self.pos..self.pos + 2].try_into()?);
+        self.pos += 2;
+
+        let rdata = self.packet[self.pos..self.pos + rdlength as usize].to_vec();
+        self.pos += rdlength as usize;
+
+        let q = Answer {
+            name: labels,
+            record_type,
+            ttl,
+            rdata,
+            ..Default::default()
+        };
+        Ok(q)
+    }
+
     pub fn parse(&mut self) -> anyhow::Result<Message> {
         let header = self.parse_header()?;
 
@@ -67,9 +98,14 @@ impl DnsParser {
             (0..header.qdcount).map(|_| self.parse_question()).collect();
         let questions = questions?;
 
+        let answers: Result<Vec<Answer>, _> =
+            (0..header.ancount).map(|_| self.parse_answer()).collect();
+        let answers = answers?;
+
         Ok(Message {
             header,
             questions,
+            answers,
             ..Default::default()
         })
     }
@@ -77,7 +113,7 @@ impl DnsParser {
 
 #[test]
 fn test_parser_decompress() {
-    let MESSAGE_BYTES: &[u8] = &[
+    let message_bytes: &[u8] = &[
         144, 155, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, // header bytes
         3, 97, 98, 99, 17, 108, 111, 110, 103, 97, 115, 115, 100, 111, 109, 97, 105, 110, 110, 97,
         109, 101, 3, 99, 111, 109, 0, 0, 1, 0, 1, // question abc longassdomainname com
@@ -85,11 +121,11 @@ fn test_parser_decompress() {
     ];
 
     let mut parser = DnsParser {
-        packet: MESSAGE_BYTES.to_vec(),
+        packet: message_bytes.to_vec(),
         pos: 0,
     };
 
-    let message = parser.parse().unwrap();
+    parser.parse().unwrap();
 
     assert!(true);
 }
