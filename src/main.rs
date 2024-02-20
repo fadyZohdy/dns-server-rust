@@ -48,6 +48,7 @@ fn handle_connection(buf: [u8; 512], forwarding_addr: Option<String>) -> anyhow:
             "couldn't connect to forwarding server on {}",
             addr.clone()
         ));
+
         for question in questions.iter() {
             let answer = forward_question(message.header.id, question, &forward_socket)?;
             answers.push(answer);
@@ -81,11 +82,8 @@ fn handle_connection(buf: [u8; 512], forwarding_addr: Option<String>) -> anyhow:
 }
 
 fn main() {
-    let args: Vec<_> = std::env::args()
-        .into_iter()
-        .map(|a| a.to_string())
-        .collect();
     let mut forwarding_addr: Option<String> = None;
+    let args: Vec<_> = std::env::args().map(|a| a.to_string()).collect();
     for i in 0..args.len() {
         if args[i] == "--resolver" {
             forwarding_addr = Some(args[i + 1].clone());

@@ -16,9 +16,13 @@ impl DnsParser {
         let mut labels: Vec<Label> = vec![];
         while let Some(b) = self.packet.get(self.pos) {
             self.pos += 1;
+            // null terminator
             if *b == 0 {
                 break;
-            } else if (*b & 0b1100_0000) == 0b1100_0000 {
+            }
+
+            // jump instruction
+            if (*b & 0b1100_0000) == 0b1100_0000 {
                 // if the two Most Significant Bits of the length is set, we can instead expect the length byte to be followed by a second byte.
                 // These two bytes taken together, and removing the two MSB's, indicate the jump position
                 // get the jump position
@@ -29,13 +33,13 @@ impl DnsParser {
                 labels.extend(self.parse_labels()?);
                 self.pos = current_pos;
                 return Ok(labels);
-            } else {
-                let length = *b as usize;
-                // skip the length byte
-                let s = String::from_utf8(self.packet[self.pos..self.pos + length].to_vec())?;
-                labels.push(Label(s));
-                self.pos += length;
             }
+
+            let length = *b as usize;
+            // skip the length byte
+            let s = String::from_utf8(self.packet[self.pos..self.pos + length].to_vec())?;
+            labels.push(Label(s));
+            self.pos += length;
         }
         Ok(labels)
     }
