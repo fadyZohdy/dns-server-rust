@@ -1,7 +1,7 @@
 use crate::types::{Answer, Header, Label, Message, Question, RecordType};
 
 pub struct DnsParser {
-    pub packet: Vec<u8>,
+    pub packet: [u8; 512],
     pub pos: usize,
 }
 
@@ -117,19 +117,24 @@ impl DnsParser {
 
 #[test]
 fn test_parser_decompress() {
-    let message_bytes: &[u8] = &[
+    let mut message_bytes: [u8; 512] = [0; 512];
+    let message: [u8; 53] = [
         144, 155, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, // header bytes
         3, 97, 98, 99, 17, 108, 111, 110, 103, 97, 115, 115, 100, 111, 109, 97, 105, 110, 110, 97,
         109, 101, 3, 99, 111, 109, 0, 0, 1, 0, 1, // question abc longassdomainname com
         3, 100, 101, 102, 192, 16, 0, 1, 0, 1, // question def jump
     ];
+    for i in 0..message.len() {
+        message_bytes[i] = message[i];
+    }
 
     let mut parser = DnsParser {
-        packet: message_bytes.to_vec(),
+        packet: message_bytes,
         pos: 0,
     };
 
-    parser.parse().unwrap();
+    let message = parser.parse().unwrap();
+    assert_eq!(message.questions.len(), 2);
 
     assert!(true);
 }

@@ -1,26 +1,17 @@
 use std::net::UdpSocket;
-use types::{Answer, Header, Message, Question};
+use types::{Answer, Header, Message, OpCode, RCode};
 
 mod parser;
 mod types;
 
-fn forward_question(id: u16, question: &Question, socket: &UdpSocket) -> anyhow::Result<Answer> {
-    let query_message = Message {
-        header: Header {
-            id,
-            qdcount: 1,
-            ..Default::default()
-        },
-        questions: vec![question.clone()],
-        ..Default::default()
-    };
-    let message_bytes: Vec<u8> = query_message.try_into().unwrap();
+fn forward_message(message: Message, socket: &UdpSocket) -> anyhow::Result<Answer> {
+    let message_bytes: Vec<u8> = message.try_into().unwrap();
     socket.send(message_bytes.as_slice())?;
 
     let mut buf = [0; 512];
     socket.recv(&mut buf)?;
     let mut dns_parser = parser::DnsParser {
-        packet: buf.to_vec(),
+        packet: buf,
         pos: 0,
     };
     let answer_message = dns_parser.parse()?;
@@ -34,23 +25,42 @@ fn forward_question(id: u16, question: &Question, socket: &UdpSocket) -> anyhow:
 
 fn handle_connection(buf: [u8; 512], forwarding_addr: Option<String>) -> anyhow::Result<Message> {
     let mut dns_parser = parser::DnsParser {
-        packet: buf.to_vec(),
+        packet: buf,
         pos: 0,
     };
-    let message = dns_parser.parse()?;
-    let questions = message.questions;
+    let query_message = dns_parser.parse()?;
+    let id = query_message.header.id;
+    let opcode = query_message.header.get_opcode()?;
+    let questions = query_message.clone().questions;
+
+    let response_header = Header::new_reply(id);
+    let mut response_message = Message {
+        header: response_header,
+        questions: questions.clone(),
+        ..Default::default()
+    };
+    response_message.header.qdcount = questions.len() as u16;
+    response_message.header.set_opcode(opcode);
+    response_message
+        .header
+        .set_rd(query_message.header.get_rd());
+
+    if opcode != OpCode::Query {
+        response_message.header.set_rcode(RCode::NotImplemented);
+        return Ok(response_message);
+    }
 
     let mut answers: Vec<Answer> = vec![];
 
     if let Some(addr) = forwarding_addr {
         let forward_socket = UdpSocket::bind("127.0.0.1:8888").expect("Failed to bind to address");
-        forward_socket.connect(addr.clone()).expect(&format!(
-            "couldn't connect to forwarding server on {}",
-            addr.clone()
-        ));
-
-        for question in questions.iter() {
-            let answer = forward_question(message.header.id, question, &forward_socket)?;
+        forward_socket.connect(addr.clone()).unwrap_or_else(|_| {
+            panic!("couldn't connect to forwarding server on {}", addr.clone())
+        });
+        for i in 0..query_message.header.qdcount {
+            let mut forwarding_message = query_message.clone();
+            forwarding_message.questions = vec![questions[i as usize].clone()];
+            let answer = forward_message(forwarding_message, &forward_socket)?;
             answers.push(answer);
         }
     } else {
@@ -66,19 +76,11 @@ fn handle_connection(buf: [u8; 512], forwarding_addr: Option<String>) -> anyhow:
         }
     }
 
-    let mut response_header = Header::new_reply(message.header.id);
-    response_header.qdcount = questions.len() as u16;
-    response_header.ancount = answers.len() as u16;
-    response_header.set_opcode(message.header.get_opcode());
-    response_header.set_rd(message.header.get_rd());
-    response_header.set_rcode(message.header.get_opcode());
+    response_message.header.ancount = answers.len() as u16;
+    response_message.answers = answers;
+    response_message.header.set_rcode(RCode::NoError);
 
-    Ok(Message {
-        header: response_header,
-        questions,
-        answers,
-        ..Default::default()
-    })
+    Ok(response_message)
 }
 
 fn main() {

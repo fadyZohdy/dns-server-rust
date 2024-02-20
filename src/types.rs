@@ -1,6 +1,61 @@
 use bytes::{BufMut, BytesMut};
 
-#[derive(Debug, Default)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum OpCode {
+    Query,
+    IQuery,
+    Status,
+    Reserved(u8),
+}
+
+impl From<OpCode> for u8 {
+    fn from(value: OpCode) -> Self {
+        match value {
+            OpCode::Query => 0,
+            OpCode::IQuery => 1,
+            OpCode::Status => 2,
+            OpCode::Reserved(n) => n,
+        }
+    }
+}
+
+impl TryFrom<u8> for OpCode {
+    type Error = anyhow::Error;
+    fn try_from(value: u8) -> anyhow::Result<OpCode, Self::Error> {
+        match value {
+            0 => Ok(OpCode::Query),
+            1 => Ok(Self::IQuery),
+            2 => Ok(OpCode::Status),
+            3..=15 => Ok(Self::Reserved(value)),
+            _ => Err(anyhow::anyhow!("unknown opcode: {value}")),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum RCode {
+    NoError,
+    FormatError,
+    ServerFailure,
+    NameError,
+    NotImplemented,
+    Refused,
+}
+
+impl From<RCode> for u8 {
+    fn from(value: RCode) -> Self {
+        match value {
+            RCode::NoError => 0,
+            RCode::FormatError => 1,
+            RCode::ServerFailure => 2,
+            RCode::NameError => 3,
+            RCode::NotImplemented => 4,
+            RCode::Refused => 5,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct Header {
     pub id: u16,
     pub flags: [u8; 2],
@@ -20,12 +75,13 @@ impl Header {
         h
     }
 
-    pub fn get_opcode(&self) -> u8 {
-        (self.flags[0] & 0b0111_1000) >> 3
+    pub fn get_opcode(&self) -> anyhow::Result<OpCode> {
+        ((self.flags[0] & 0b0111_1000) >> 3).try_into()
     }
 
-    pub fn set_opcode(&mut self, opcode: u8) {
-        let mask = (opcode << 3) & 0b0111_1000;
+    pub fn set_opcode(&mut self, opcode: OpCode) {
+        let value: u8 = opcode.into();
+        let mask = (value << 3) & 0b0111_1000;
         self.flags[0] |= mask;
     }
 
@@ -45,11 +101,9 @@ impl Header {
     }
 
     // 0 (no error) if OPCODE is 0 (standard query) else 4 (not implemented)
-    pub fn set_rcode(&mut self, opcode: u8) {
-        if opcode != 0 {
-            self.flags[1] &= 0b1111_0000;
-            self.flags[1] |= 0b1111_0100;
-        }
+    pub fn set_rcode(&mut self, rcode: RCode) {
+        let mask: u8 = rcode.into();
+        self.flags[1] |= mask;
     }
 }
 
@@ -209,13 +263,13 @@ impl From<Answer> for Vec<u8> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Authority {}
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Additional {}
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Message {
     pub header: Header,
     pub questions: Vec<Question>,
