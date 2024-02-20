@@ -62,6 +62,7 @@ fn handle_connection(buf: [u8; 512], forwarding_addr: Option<String>) -> anyhow:
         for i in 0..query_message.header.qdcount {
             let mut forwarding_message = query_message.clone();
             forwarding_message.questions = vec![questions[i as usize].clone()];
+            forwarding_message.header.qdcount = 1;
             let answer = forward_message(forwarding_message, &forward_socket)?;
             answers.push(answer);
         }
