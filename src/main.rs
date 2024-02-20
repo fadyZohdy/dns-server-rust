@@ -5,7 +5,6 @@ mod parser;
 mod types;
 
 fn forward_message(message: Message, socket: &UdpSocket) -> anyhow::Result<Answer> {
-    println!("forwarding message: {:?}", message);
     let message_bytes: Vec<u8> = message.try_into().unwrap();
     socket.send(message_bytes.as_slice())?;
 
@@ -16,7 +15,6 @@ fn forward_message(message: Message, socket: &UdpSocket) -> anyhow::Result<Answe
         pos: 0,
     };
     let answer_message = dns_parser.parse()?;
-    println!("got answer: {:?}", answer_message);
 
     if let Some(answer) = answer_message.answers.first() {
         Ok(answer.clone())
